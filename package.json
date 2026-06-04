@@ -1,0 +1,39 @@
+{
+    "name": "@ws-asyncapi/adapter-node",
+    "version": "0.1.0",
+    "description": "Node (ws) adapter for ws-asyncapi — contract-first, typed WebSockets",
+    "license": "MIT",
+    "type": "module",
+    "author": {
+        "url": "https://github.com/kravetsone",
+        "name": "kravets"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ws-asyncapi/adapter-node.git"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        }
+    },
+    "files": ["dist"],
+    "scripts": {
+        "prepublishOnly": "bunx pkgroll"
+    },
+    "dependencies": {
+        "@types/ws": "^8.5.12",
+        "ws": "^8.18.0"
+    },
+    "peerDependencies": {
+        "ws-asyncapi": "^0.1.0"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^1.9.4",
+        "@types/bun": "latest",
+        "pkgroll": "^2.11.2",
+        "ws-asyncapi": "^0.1.0"
+    }
+}
