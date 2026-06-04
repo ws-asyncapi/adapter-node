@@ -58,15 +58,28 @@ export class WsHub {
 		return this.#topics.get(topic)?.has(id) ?? false;
 	}
 
-	/** Deliver an already-encoded payload to every local member of `topic`. */
-	localPublish(topic: string, payload: string | Uint8Array): void {
+	/** Deliver an already-encoded payload to every local member of `topic`,
+	 *  optionally skipping the given socket ids (e.g. the broadcast sender). */
+	localPublish(
+		topic: string,
+		payload: string | Uint8Array,
+		except?: string[],
+	): void {
 		const members = this.#topics.get(topic);
 		if (!members) return;
+		const skip = except && except.length ? new Set(except) : undefined;
 		for (const id of members) {
+			if (skip?.has(id)) continue;
 			const ws = this.#sockets.get(id);
 			// 1 === WebSocket.OPEN
 			if (ws && ws.readyState === 1) ws.send(payload);
 		}
+	}
+
+	/** Local socket ids, optionally filtered to a topic. */
+	ids(topic?: string): string[] {
+		if (topic) return [...(this.#topics.get(topic) ?? [])];
+		return [...this.#sockets.keys()];
 	}
 }
 
@@ -151,6 +164,25 @@ export class WebSocketNode<WebsocketData extends WebsocketDataType, Topics>
 			topic,
 			type as string,
 			data[0],
+		);
+	}
+
+	broadcast<T extends keyof WebsocketData["server"]>(
+		topic: Topics,
+		type: T,
+		...data: WebsocketData["server"][T] extends never
+			? []
+			: [WebsocketData["server"][T]]
+	): void {
+		if (typeof topic !== "string" || !this.backplane) return;
+		// exclude this socket from delivery cluster-wide
+		void publishEvent(
+			this.backplane,
+			this.codec,
+			topic,
+			type as string,
+			data[0],
+			[this.id],
 		);
 	}
 

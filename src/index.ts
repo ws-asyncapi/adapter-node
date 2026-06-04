@@ -93,7 +93,9 @@ export function createNodeWsServer(
 	const hub = new WsHub();
 
 	// deliver every backplane message (local or cross-node) to local members
-	backplane.onMessage((message) => hub.localPublish(message.topic, message.payload));
+	backplane.onMessage((message) =>
+		hub.localPublish(message.topic, message.payload, message.except),
+	);
 
 	// route channel.publish(...) through the backplane (+ recovery offset)
 	for (const channel of channels) {
@@ -103,6 +105,17 @@ export function createNodeWsServer(
 			// biome-ignore lint/suspicious/noExplicitAny: type-erased seam
 			data: any,
 		) => void publishEvent(backplane, codec, topic, type, data);
+		channel["~"].fetchSockets = async (room) => {
+			const ids = room ? await backplane.roomMembers(room) : hub.ids();
+			return Promise.all(
+				ids.map(async (id) => ({
+					id,
+					rooms: (await backplane.rooms(id)).filter(
+						(r) => !r.startsWith("#sid:"),
+					),
+				})),
+			);
+		};
 	}
 
 	const wss = options.server
