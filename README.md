@@ -63,10 +63,12 @@ codegen-free `createClient<typeof chat>("ws://localhost:3000", "/chat/1")`.
 
 ```ts
 createNodeWsServer(channels, {
-  port,       // open a server on this port (ignored if `server` is given)
-  server,     // attach to an existing node:http Server
-  codec,      // wire codec (default: JSON). Must match the client codec.
-  backplane,  // scaling backplane (default: in-process LocalBackplane)
+  port,        // open a server on this port (ignored if `server` is given)
+  server,      // attach to an existing node:http Server
+  codec,       // wire codec (default: JSON). Must match the client codec.
+  backplane,   // scaling backplane (default: in-process LocalBackplane)
+  maxPayload,  // max inbound message bytes (default: 1 MiB); oversized frames
+               // are rejected with close 1009 (DoS / decode-bomb guard).
 });
 ```
 
@@ -76,9 +78,26 @@ createNodeWsServer(channels, {
 - **Rooms** — `ws` has no native pub/sub, so the adapter keeps a local room registry and
   fans out itself; cluster-wide delivery and membership go through the backplane.
 
+### Graceful shutdown (zero-downtime deploys)
+
+`drain()` stops accepting new connections, sends every client a close `1001`
+("going away") so it reconnects elsewhere, waits up to `graceMs` for them to
+leave, then terminates stragglers. With connection-state-recovery the reconnect
+replays anything missed, so a rolling deploy is seamless. Wire it to `SIGTERM`:
+
+```ts
+const srv = createNodeWsServer([chat], { port: 3000 });
+process.on("SIGTERM", async () => {
+  await srv.drain(10_000); // grace window
+  process.exit(0);
+});
+```
+
+Use `close()` for an immediate, non-graceful stop.
+
 ## API
 
-- `createNodeWsServer(channels, options?)` → `{ wss, close() }`.
+- `createNodeWsServer(channels, options?)` → `{ wss, drain(graceMs?), close() }`.
 - `WsHub` / `WebSocketNode` — exported for advanced/custom integrations.
 
 ## License
