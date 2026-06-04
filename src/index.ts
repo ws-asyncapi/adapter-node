@@ -11,6 +11,7 @@ import {
 	jsonCodec,
 	LocalBackplane,
 	openConnection,
+	OutboundRpc,
 } from "ws-asyncapi";
 import { publishEvent } from "./emit.ts";
 import { WebSocketNode, WsHub } from "./websocket.ts";
@@ -124,10 +125,19 @@ export function createNodeWsServer(
 			headers: req.headers as Record<string, string>,
 			params,
 		};
+		const outbound = new OutboundRpc();
 		const conn: Connection = {
-			ws: new WebSocketNode<any, any>(raw, id, hub, codec, backplane),
+			ws: new WebSocketNode<any, any>(
+				raw,
+				id,
+				hub,
+				codec,
+				backplane,
+				outbound,
+			),
 			request,
 			data: {},
+			outbound,
 		};
 
 		void (async () => {

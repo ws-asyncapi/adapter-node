@@ -5,6 +5,7 @@ import {
 	type Codec,
 	Frame,
 	jsonCodec,
+	type OutboundRpc,
 	type WebSocketImplementation,
 	type WebsocketDataType,
 } from "ws-asyncapi";
@@ -78,7 +79,25 @@ export class WebSocketNode<WebsocketData extends WebsocketDataType, Topics>
 		private hub: WsHub,
 		private codec: Codec = jsonCodec,
 		private backplane?: Backplane,
+		private outbound?: OutboundRpc,
 	) {}
+
+	request<Name extends keyof NonNullable<WebsocketData["serverRpc"]>>(
+		name: Name,
+		input: NonNullable<WebsocketData["serverRpc"]>[Name]["input"],
+		options?: { timeout?: number },
+	): Promise<NonNullable<WebsocketData["serverRpc"]>[Name]["output"]> {
+		if (!this.outbound)
+			return Promise.reject(
+				new Error("server→client RPC not available on this connection"),
+			);
+		return this.outbound.request(
+			(frame) => this.sendFrame(frame),
+			name as string,
+			input,
+			options?.timeout ?? 30_000,
+		) as Promise<NonNullable<WebsocketData["serverRpc"]>[Name]["output"]>;
+	}
 
 	sendFrame(frame: AnyFrame): void {
 		this.sendRaw(this.codec.encode(frame));
