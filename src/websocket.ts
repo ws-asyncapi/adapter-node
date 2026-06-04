@@ -5,11 +5,11 @@ import {
 	type Codec,
 	Frame,
 	jsonCodec,
+	publishEvent,
 	type OutboundRpc,
 	type WebSocketImplementation,
 	type WebsocketDataType,
 } from "ws-asyncapi";
-import { publishEvent } from "./emit.ts";
 
 /**
  * Local room registry + fan-out. The `ws` library has no native topic pub/sub

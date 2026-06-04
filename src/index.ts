@@ -12,8 +12,8 @@ import {
 	LocalBackplane,
 	openConnection,
 	OutboundRpc,
+	publishEvent,
 } from "ws-asyncapi";
-import { publishEvent } from "./emit.ts";
 import { WebSocketNode, WsHub } from "./websocket.ts";
 
 export { WebSocketNode, WsHub } from "./websocket.ts";
