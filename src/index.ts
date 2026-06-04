@@ -3,13 +3,16 @@ import { type RawData, WebSocketServer } from "ws";
 import {
 	type AnyChannel,
 	type AnyFrame,
+	applyCommand,
 	type Backplane,
 	closeConnection,
 	type Codec,
+	COMMAND_TOPIC,
 	type Connection,
 	dispatchFrame,
 	jsonCodec,
 	LocalBackplane,
+	type NodeCommand,
 	openConnection,
 	OutboundRpc,
 	publishEvent,
@@ -91,11 +94,29 @@ export function createNodeWsServer(
 	const codec = options.codec ?? jsonCodec;
 	const backplane = options.backplane ?? new LocalBackplane();
 	const hub = new WsHub();
+	const channelsByName = new Map(channels.map((c) => [c.name, c]));
 
 	// deliver every backplane message (local or cross-node) to local members
-	backplane.onMessage((message) =>
-		hub.localPublish(message.topic, message.payload, message.except),
-	);
+	backplane.onMessage((message) => {
+		if (message.topic === COMMAND_TOPIC) {
+			let cmd: NodeCommand | null = null;
+			try {
+				cmd = JSON.parse(
+					typeof message.payload === "string"
+						? message.payload
+						: new TextDecoder().decode(message.payload),
+				) as NodeCommand;
+			} catch {}
+			if (cmd)
+				applyCommand(
+					channelsByName.get(cmd.channel),
+					cmd,
+					message.origin === backplane.nodeId,
+				);
+			return;
+		}
+		hub.localPublish(message.topic, message.payload, message.except);
+	});
 
 	// route channel.publish(...) through the backplane (+ recovery offset)
 	for (const channel of channels) {
@@ -115,6 +136,9 @@ export function createNodeWsServer(
 					),
 				})),
 			);
+		};
+		channel["~"].sendCommand = (cmd) => {
+			void backplane.publish(COMMAND_TOPIC, JSON.stringify(cmd));
 		};
 	}
 
