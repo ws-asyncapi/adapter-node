@@ -30,11 +30,26 @@ export interface NodeWsServerOptions {
 	codec?: Codec;
 	/** scaling backplane (default: in-process LocalBackplane) */
 	backplane?: Backplane;
+	/**
+	 * Max inbound message size in bytes; larger frames are rejected with close
+	 * 1009 before they are buffered/decoded (DoS / decode-bomb guard). Default:
+	 * 1 MiB. Raise it if you send large in-band payloads.
+	 */
+	maxPayload?: number;
 }
 
 export interface NodeWsServer {
 	/** the underlying `ws` WebSocketServer */
 	wss: WebSocketServer;
+	/**
+	 * Graceful shutdown for zero-downtime deploys: stop accepting new
+	 * connections, send every client a close `1001` ("going away") so they
+	 * reconnect elsewhere, and wait up to `graceMs` for them to disconnect (with
+	 * connection-state-recovery, the reconnect replays anything missed). Falls
+	 * back to terminating stragglers, then closes the backplane. Wire it to
+	 * SIGTERM. Use {@link close} for an immediate, non-graceful stop.
+	 */
+	drain(graceMs?: number): Promise<void>;
 	/** close the server and the backplane */
 	close(): Promise<void>;
 }
@@ -61,6 +76,13 @@ function matchChannel(
 		if (ok) return { channel, params };
 	}
 	return undefined;
+}
+
+/** Byte size of a raw inbound `ws` message (Buffer | ArrayBuffer | Buffer[]). */
+function rawSize(raw: RawData): number {
+	if (Array.isArray(raw)) return raw.reduce((n, b) => n + b.length, 0);
+	if (raw instanceof ArrayBuffer) return raw.byteLength;
+	return (raw as Buffer).length ?? 0;
 }
 
 function decodeFrame(codec: Codec, raw: RawData, isBinary: boolean): AnyFrame | undefined {
@@ -142,9 +164,10 @@ export function createNodeWsServer(
 		};
 	}
 
+	const maxPayload = options.maxPayload ?? 1_048_576; // 1 MiB
 	const wss = options.server
-		? new WebSocketServer({ server: options.server })
-		: new WebSocketServer({ port: options.port });
+		? new WebSocketServer({ server: options.server, maxPayload })
+		: new WebSocketServer({ port: options.port, maxPayload });
 
 	wss.on("connection", (raw, req: IncomingMessage) => {
 		const url = new URL(req.url ?? "/", "http://localhost");
@@ -194,6 +217,13 @@ export function createNodeWsServer(
 			await openConnection(channel, conn);
 
 			raw.on("message", (data, isBinary) => {
+				// payload cap: reject oversized frames before decoding. `ws`'s
+				// native maxPayload also covers this on real Node; this guard
+				// makes it portable (some ws shims ignore maxPayload).
+				if (rawSize(data) > maxPayload) {
+					raw.close(1009, "message too large");
+					return;
+				}
 				const frame = decodeFrame(codec, data, isBinary);
 				if (frame) void dispatchFrame(channel, backplane, conn, frame);
 			});
@@ -206,6 +236,25 @@ export function createNodeWsServer(
 
 	return {
 		wss,
+		drain: async (graceMs = 10_000) => {
+			// tell every client we're going away so it reconnects elsewhere
+			// (before wss.close so the 1001 code wins the race on runtimes whose
+			// ws shim closes clients when the server stops listening)
+			for (const client of wss.clients) {
+				try {
+					client.close(1001, "server draining");
+				} catch {}
+			}
+			// stop accepting new upgrades
+			wss.close();
+			// wait for clients to leave, up to the grace window
+			const deadline = Date.now() + graceMs;
+			while (wss.clients.size > 0 && Date.now() < deadline)
+				await new Promise((r) => setTimeout(r, 50).unref?.());
+			// terminate any stragglers that ignored the close
+			for (const client of wss.clients) client.terminate();
+			await backplane.close();
+		},
 		close: async () => {
 			// drop active sockets first so `wss.close` can complete promptly
 			for (const client of wss.clients) client.terminate();
