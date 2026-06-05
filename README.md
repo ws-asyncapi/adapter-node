@@ -95,6 +95,30 @@ process.on("SIGTERM", async () => {
 
 Use `close()` for an immediate, non-graceful stop.
 
+### Mid-connection token refresh (`.onAuth`)
+
+A WebSocket can easily outlive the bearer token it connected with. Declare
+`.onAuth(credentials, handler)` and the client can present fresh credentials on
+the *live* connection — the server re-runs the handler and replaces the
+connection context, no reconnect:
+
+```ts
+const chat = new Channel("/chat/:room", "chat")
+  .resolve(async ({ request }) => ({ user: await verify(request.headers.token) }))
+  .onAuth(z.object({ token: z.string() }), async ({ credentials }) => ({
+    user: await verify(credentials.token), // replaces the stale `user`
+  }));
+
+// client — call before the token expires (rejects with a typed RpcError if denied)
+await client.authenticate({ token: freshJwt });
+```
+
+The credentials type is inferred end-to-end (codegen-free), so
+`client.authenticate(...)` is fully typed. The last credentials are
+**re-presented automatically after a reconnect**, so the refreshed identity
+survives transient drops (a fresh connection's `.resolve` only sees the original
+connect-time token). Throw an `RpcError` in the handler to reject a refresh.
+
 ## API
 
 - `createNodeWsServer(channels, options?)` → `{ wss, drain(graceMs?), close() }`.
