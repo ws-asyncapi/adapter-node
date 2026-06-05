@@ -163,6 +163,8 @@ export function createNodeWsServer(
 		channel["~"].sendCommand = (cmd) => {
 			void backplane.publish(COMMAND_TOPIC, JSON.stringify(cmd));
 		};
+		channel["~"].publishFrame = (topic, frame, except) =>
+			void backplane.publish(topic, codec.encode(frame), undefined, except);
 	}
 
 	const maxPayload = options.maxPayload ?? 1_048_576; // 1 MiB
