@@ -16,6 +16,7 @@ import {
 	openConnection,
 	OutboundRpc,
 	publishEvent,
+	StreamRegistry,
 } from "ws-asyncapi";
 import { WebSocketNode, WsHub } from "./websocket.ts";
 
@@ -198,6 +199,7 @@ export function createNodeWsServer(
 			request,
 			data: {},
 			outbound,
+			streams: new StreamRegistry(),
 		};
 
 		void (async () => {
