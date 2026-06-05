@@ -165,6 +165,10 @@ export function createNodeWsServer(
 		};
 		channel["~"].publishFrame = (topic, frame, except) =>
 			void backplane.publish(topic, codec.encode(frame), undefined, except);
+		if (channel["~"].history.size)
+			backplane.configureHistory?.(
+				Object.fromEntries(channel["~"].history),
+			);
 	}
 
 	const maxPayload = options.maxPayload ?? 1_048_576; // 1 MiB

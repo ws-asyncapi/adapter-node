@@ -119,6 +119,45 @@ The credentials type is inferred end-to-end (codegen-free), so
 survives transient drops (a fresh connection's `.resolve` only sees the original
 connect-time token). Throw an `RpcError` in the handler to reject a refresh.
 
+### Typed presence (`.presence`)
+
+A per-room roster of who's connected and their live state (cursor, status,
+"typing…"). Declare the member-state schema; each connection gets one presence
+room derived server-side (default: its concrete address):
+
+```ts
+const doc = new Channel("/doc/:id", "doc")
+  .presence(z.object({ name: z.string(), typing: z.boolean() }));
+
+// client:
+await client.presence.set({ name: "Alice", typing: true });   // announce/update
+client.presence.subscribe((members) => render(members));      // Map<id, state>, live
+await client.presence.clear();                                 // leave
+```
+
+Join/leave/update changes are delivered as diffs and reconciled into a live
+roster; a (re)connecting client fetches the current roster via a snapshot, and
+the last announced state is re-sent automatically after a reconnect. Because
+diffs ride the normal room fan-out, presence works across a cluster (the roster
+snapshot is backed by the backplane — in-memory for `LocalBackplane`).
+
+### Per-room history / rewind (`.history`)
+
+Retain recent events per room so a client can fetch a backlog on demand — the
+chat-scrollback / last-N-ticks pattern. (Distinct from connection-state-recovery,
+which replays only *your* gap during a brief blip; history is room-scoped and any
+subscribed client can read it.)
+
+```ts
+const chat = new Channel("/chat/:room", "chat")
+  .serverMessage("message", z.object({ text: z.string() }))
+  .history("message", { keep: 50 });   // retain the last 50 per room
+
+// client (only for rooms you're subscribed to):
+const recent = await client.history("room:42", { limit: 50 });
+for (const { event, data } of recent) { /* typed, discriminated by `event` */ }
+```
+
 ## API
 
 - `createNodeWsServer(channels, options?)` → `{ wss, drain(graceMs?), close() }`.
