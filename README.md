@@ -12,7 +12,7 @@ on Node (or alongside an existing `http`/Express/Fastify server).
 
 ```bash
 npm install @ws-asyncapi/adapter-node ws-asyncapi ws
-# message schemas: any Standard Schema validator (zod / valibot / arktype) or @sinclair/typebox
+# message schemas: any Standard Schema validator (zod / valibot / arktype)
 ```
 
 ## Usage
