@@ -16,6 +16,7 @@ import {
 	openConnection,
 	OutboundRpc,
 	publishEvent,
+	type ServerPlugin,
 	StreamRegistry,
 } from "ws-asyncapi";
 import { WebSocketNode, WsHub } from "./websocket.ts";
@@ -37,6 +38,8 @@ export interface NodeWsServerOptions {
 	 * 1 MiB. Raise it if you send large in-band payloads.
 	 */
 	maxPayload?: number;
+	/** server-level plugins (metrics, tracing, logging) tapping every channel */
+	plugins?: ServerPlugin[];
 }
 
 export interface NodeWsServer {
@@ -165,6 +168,7 @@ export function createNodeWsServer(
 		};
 		channel["~"].publishFrame = (topic, frame, except) =>
 			void backplane.publish(topic, codec.encode(frame), undefined, except);
+		if (options.plugins) channel["~"].serverPlugins = options.plugins;
 		if (channel["~"].history.size)
 			backplane.configureHistory?.(
 				Object.fromEntries(channel["~"].history),
